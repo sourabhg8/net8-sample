@@ -40,7 +40,7 @@ try
     // Configure application services using extension methods
     builder.Services.AddAppConfiguration(builder.Configuration);
     builder.Services.AddCosmosDb(builder.Configuration);
-    builder.Services.AddApplicationServices();
+    builder.Services.AddApplicationServices(builder.Configuration);
     builder.Services.AddJwtAuthentication(builder.Configuration);
     builder.Services.AddSwaggerDocumentation();
 

@@ -23,6 +23,7 @@ public class SearchRepository : ISearchRepository
         int pageSize = 10,
         string? category = null,
         string? type = null,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? filters = null,
         CancellationToken cancellationToken = default)
     {
         await Task.Delay(50, cancellationToken); // Simulate async operation
@@ -84,6 +85,7 @@ public class SearchRepository : ISearchRepository
 
     public async Task<Dictionary<string, int>> GetFacetCountsAsync(
         string sanitizedQuery,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? filters = null,
         CancellationToken cancellationToken = default)
     {
         await Task.Delay(10, cancellationToken);

@@ -3,10 +3,14 @@ using System.ComponentModel.DataAnnotations;
 namespace Microservices.Core.DTOs;
 
 /// <summary>
-/// Search request DTO
+/// Search request DTO for POST /api/Search.
+/// Hybrid search (full-text + vector) is used; Azure AI Search vectorizes the search term server-side.
 /// </summary>
 public class SearchRequest
 {
+    /// <summary>
+    /// Search query text. Used for both full-text and vector search (Azure vectorizes this server-side).
+    /// </summary>
     [Required]
     [StringLength(500, MinimumLength = 1)]
     public string SearchQuery { get; set; } = string.Empty;
@@ -18,12 +22,19 @@ public class SearchRequest
     public int PageSize { get; set; } = 10;
 
     /// <summary>
-    /// Optional filter by category
+    /// Optional filters and selected facet values from the frontend.
+    /// Key = index field name (e.g. source, year, text_source). Value = list of selected values.
+    /// Example: { "source": ["PubMed"], "year": ["2023", "2024"] }
+    /// </summary>
+    public Dictionary<string, List<string>>? Filters { get; set; }
+
+    /// <summary>
+    /// Optional. Legacy: filter by category (maps to first FilterFields entry in config, e.g. source).
     /// </summary>
     public string? Category { get; set; }
 
     /// <summary>
-    /// Optional filter by type (e.g., "document", "user", "organization")
+    /// Optional. Legacy: filter by type (maps to second FilterFields entry in config, e.g. text_source).
     /// </summary>
     public string? Type { get; set; }
 }

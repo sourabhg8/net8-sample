@@ -44,17 +44,20 @@ public partial class SearchService : ISearchService
             "Query sanitized: Original='{Original}', Sanitized='{Sanitized}'",
             request.SearchQuery, sanitizedQuery);
 
-        // Perform the search
+        var filters = BuildFiltersFromRequest(request);
+
+        // Perform the search (hybrid full-text + vector when Azure Search is configured; Azure vectorizes the query server-side)
         var (results, totalCount) = await _searchRepository.SearchAsync(
             sanitizedQuery,
             request.PageNumber,
             request.PageSize,
             request.Category,
             request.Type,
+            filters,
             cancellationToken);
 
-        // Get facet counts
-        var facetCounts = await _searchRepository.GetFacetCountsAsync(sanitizedQuery, cancellationToken);
+        // Get facet counts scoped by the same filters
+        var facetCounts = await _searchRepository.GetFacetCountsAsync(sanitizedQuery, filters, cancellationToken);
 
         stopwatch.Stop();
 
@@ -91,6 +94,22 @@ public partial class SearchService : ISearchService
             stopwatch.ElapsedMilliseconds, sanitizedQuery, results.Count, totalCount);
 
         return response;
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>>? BuildFiltersFromRequest(SearchRequest request)
+    {
+        if (request.Filters == null || request.Filters.Count == 0)
+            return null;
+        var dict = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in request.Filters)
+        {
+            if (string.IsNullOrWhiteSpace(kv.Key) || kv.Value == null)
+                continue;
+            var list = kv.Value.Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+            if (list.Count > 0)
+                dict[kv.Key] = list;
+        }
+        return dict.Count > 0 ? dict : null;
     }
 
     public string SanitizeQuery(string query)

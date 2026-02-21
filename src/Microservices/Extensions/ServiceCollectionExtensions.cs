@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
     {
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
         services.Configure<CosmosDbSettings>(configuration.GetSection(CosmosDbSettings.SectionName));
+        services.Configure<AzureSearchSettings>(configuration.GetSection(AzureSearchSettings.SectionName));
         services.Configure<AppSettings>(configuration.GetSection(AppSettings.SectionName));
         services.Configure<PasswordSettings>(configuration.GetSection(PasswordSettings.SectionName));
 
@@ -62,14 +63,20 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Adds application services with dependency injection
     /// </summary>
-    public static IServiceCollection AddApplicationServices(this IServiceCollection services)
+    public static IServiceCollection AddApplicationServices(
+        this IServiceCollection services,
+        IConfiguration configuration)
     {
         // Register Cosmos DB repositories
-        services.AddScoped<IUserRepository, CosmosUserRepository>();
-        services.AddScoped<IOrganizationRepository, CosmosOrganizationRepository>();
-        
-        // Search repository remains in-memory (mock data)
-        services.AddSingleton<ISearchRepository, SearchRepository>();
+        services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IOrganizationRepository, OrganizationRepository>();
+
+        // Search: use Azure AI Search when configured, otherwise in-memory mock
+        var azureSearchSettings = configuration.GetSection(AzureSearchSettings.SectionName).Get<AzureSearchSettings>();
+        if (azureSearchSettings?.IsConfigured == true)
+            services.AddSingleton<ISearchRepository, AzureSearchRepository>();
+        else
+            services.AddSingleton<ISearchRepository, SearchRepository>();
 
         // Register services
         services.AddSingleton<IPasswordService, PasswordService>(); // Singleton - stateless service

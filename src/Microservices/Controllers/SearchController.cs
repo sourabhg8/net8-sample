@@ -30,7 +30,7 @@ public class SearchController : ControllerBase
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Search results with pagination</returns>
     [HttpPost]
-    [Authorize]
+    //[Authorize]
     [ProducesResponseType(typeof(ApiResponse<SearchResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<SearchResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<SearchResponse>), StatusCodes.Status401Unauthorized)]

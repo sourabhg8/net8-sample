@@ -25,6 +25,7 @@ public static class ServiceCollectionExtensions
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
         services.Configure<CosmosDbSettings>(configuration.GetSection(CosmosDbSettings.SectionName));
         services.Configure<AzureSearchSettings>(configuration.GetSection(AzureSearchSettings.SectionName));
+        services.Configure<SearchCompletionSettings>(configuration.GetSection(SearchCompletionSettings.SectionName));
         services.Configure<AppSettings>(configuration.GetSection(AppSettings.SectionName));
         services.Configure<PasswordSettings>(configuration.GetSection(PasswordSettings.SectionName));
 
@@ -84,6 +85,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IOrganizationService, OrganizationService>();
         services.AddScoped<IUserService, UserService>();
+        services.AddHttpClient<ISearchCompletionService, SearchCompletionService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(120);
+        });
         services.AddScoped<ISearchService, SearchService>();
 
         return services;

@@ -63,8 +63,8 @@ public class SearchRepository : ISearchRepository
 
         var totalCount = query.Count();
 
-        // Calculate relevance score and order
-        var results = query
+        // Calculate relevance score and order; expose raw score for normalization in SearchService
+        var page = query
             .Select(item => new
             {
                 Item = item,
@@ -73,8 +73,13 @@ public class SearchRepository : ISearchRepository
             .OrderByDescending(x => x.Score)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
-            .Select(x => x.Item)
             .ToList();
+
+        var results = page.Select(x =>
+        {
+            x.Item.SearchScore = x.Score;
+            return x.Item;
+        }).ToList();
 
         _logger.LogInformation(
             "Search completed: Query='{Query}', Results={Count}, Total={Total}",

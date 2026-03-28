@@ -59,10 +59,25 @@ public class SearchResultItem
 }
 
 /// <summary>
+/// Excerpt passed to the completion API for featured answers.
+/// </summary>
+public sealed class SearchExcerpt
+{
+    public string Title { get; init; } = string.Empty;
+    public string Text { get; init; } = string.Empty;
+    public double RelevancePercent { get; init; }
+}
+
+/// <summary>
 /// Search response with pagination
 /// </summary>
 public class SearchResponse
 {
+    /// <summary>
+    /// Optional AI-generated featured summary (Google-style answer). Omitted when null or empty.
+    /// </summary>
+    public string? AiSummary { get; set; }
+
     public List<SearchResultItem> Results { get; set; } = new();
     public int TotalResults { get; set; }
     public int PageNumber { get; set; }

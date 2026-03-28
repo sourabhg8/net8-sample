@@ -18,5 +18,10 @@ public class SearchableItem
     public DateTime CreatedAt { get; set; }
     public DateTime? ModifiedAt { get; set; }
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// Raw @search.score from Azure AI Search when available (used to normalize relevance %).
+    /// </summary>
+    public double? SearchScore { get; set; }
 }
 

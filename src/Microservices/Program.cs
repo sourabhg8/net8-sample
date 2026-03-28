@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Serilog;
 using Serilog.Events;
 using Microservices.Extensions;
@@ -34,7 +35,11 @@ try
             outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{CorrelationId}] {Message:lj}{NewLine}{Exception}"));
 
     // Add services to the container
-    builder.Services.AddControllers();
+    builder.Services.AddControllers()
+        .AddJsonOptions(options =>
+        {
+            options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        });
     builder.Services.AddEndpointsApiExplorer();
 
     // Configure application services using extension methods

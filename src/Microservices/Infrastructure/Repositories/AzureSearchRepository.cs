@@ -90,7 +90,10 @@ public class AzureSearchRepository : ISearchRepository
         {
             var item = MapMedAiDocumentToSearchableItem(result.Document);
             if (item != null)
+            {
+                item.SearchScore = result.Score;
                 results.Add(item);
+            }
         }
 
         _logger.LogInformation(

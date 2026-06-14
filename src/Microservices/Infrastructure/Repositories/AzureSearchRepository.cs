@@ -52,6 +52,9 @@ public class AzureSearchRepository : ISearchRepository
             IncludeTotalCount = true
         };
 
+        // Relevance order from Azure (@search.score); no local re-sort in SearchService.
+        options.OrderBy.Add("search.score() desc");
+
         if (_settings.SelectFields?.Count > 0)
         {
             foreach (var field in _settings.SelectFields)
@@ -223,6 +226,8 @@ public class AzureSearchRepository : ISearchRepository
             }
 
             var metadata = new Dictionary<string, string>();
+            if (!string.IsNullOrWhiteSpace(title))
+                metadata["documentTitle"] = title.Trim();
             AddMeta(metadata, doc, "pmcid", "pmcid");
             AddMeta(metadata, doc, "pmid", "pmid");
             AddMeta(metadata, doc, "year", "year");

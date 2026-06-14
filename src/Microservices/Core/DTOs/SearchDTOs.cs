@@ -37,6 +37,12 @@ public class SearchRequest
     /// Optional. Legacy: filter by type (maps to second FilterFields entry in config, e.g. text_source).
     /// </summary>
     public string? Type { get; set; }
+
+    /// <summary>
+    /// Optional. Raw @search.score from the top result on page 1. Pass when paginating so relevance % stays
+    /// consistent across pages (Azure already returns pages in relevance order).
+    /// </summary>
+    public double? PeakRelevanceScore { get; set; }
 }
 
 /// <summary>
@@ -45,7 +51,10 @@ public class SearchRequest
 public class SearchResultItem
 {
     public string Id { get; set; } = string.Empty;
+    /// <summary>Chunk preview (first ~55 chars of passage text).</summary>
     public string Title { get; set; } = string.Empty;
+    /// <summary>Original document title from the index (e.g. paper title).</summary>
+    public string? DocumentTitle { get; set; }
     public string Description { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty; // document, user, organization, etc.
     public string Category { get; set; } = string.Empty;
@@ -77,6 +86,11 @@ public class SearchResponse
     /// Optional AI-generated featured summary (Google-style answer). Omitted when null or empty.
     /// </summary>
     public string? AiSummary { get; set; }
+
+    /// <summary>
+    /// Raw @search.score of the #1 result (page 1 only). Send back as PeakRelevanceScore when paginating.
+    /// </summary>
+    public double? PeakRelevanceScore { get; set; }
 
     public List<SearchResultItem> Results { get; set; } = new();
     public int TotalResults { get; set; }

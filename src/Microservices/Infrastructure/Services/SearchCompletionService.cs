@@ -106,7 +106,7 @@ public class SearchCompletionService : ISearchCompletionService
             return sb.ToString();
         }
 
-        sb.AppendLine("Search excerpts (relevance % is normalized within this page):");
+        sb.AppendLine("Search excerpts (relevance % is relative to the top-ranked result):");
         for (var i = 0; i < excerpts.Count; i++)
         {
             var e = excerpts[i];

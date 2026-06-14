@@ -63,22 +63,16 @@ public class SearchRepository : ISearchRepository
 
         var totalCount = query.Count();
 
-        // Calculate relevance score and order; expose raw score for normalization in SearchService
+        // Pagination only; relevance order comes from Azure Search query (mock has no ranked index).
         var page = query
-            .Select(item => new
-            {
-                Item = item,
-                Score = CalculateRelevanceScore(item, sanitizedQuery)
-            })
-            .OrderByDescending(x => x.Score)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToList();
 
-        var results = page.Select(x =>
+        var results = page.Select(item =>
         {
-            x.Item.SearchScore = x.Score;
-            return x.Item;
+            item.SearchScore = CalculateRelevanceScore(item, sanitizedQuery);
+            return item;
         }).ToList();
 
         _logger.LogInformation(

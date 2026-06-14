@@ -68,23 +68,36 @@ public partial class SearchService : ISearchService
 
         stopwatch.Stop();
 
-        var normalized = NormalizeRelevancePercents(results);
+        // Azure returns pages in relevance order; page 2+ naturally has lower scores than page 1.
+        // Peak score comes from page 1 (or client passes it when paginating) — no extra search call.
+        var peakRawScore = request.PeakRelevanceScore;
+        if (request.PageNumber == 1 && results.Count > 0 && results[0].SearchScore is > 0)
+            peakRawScore = results[0].SearchScore;
+
+        var normalized = NormalizeRelevancePercents(results, peakRawScore);
         var resultItems = new List<SearchResultItem>();
         for (var i = 0; i < results.Count; i++)
         {
             var item = results[i];
             var relevancePercent = normalized[i];
+            var chunkText = string.IsNullOrEmpty(item.Content) ? item.Description : item.Content;
+            var documentTitle = string.IsNullOrWhiteSpace(item.Title) ? null : item.Title.Trim();
+            var metadata = new Dictionary<string, string>(item.Metadata);
+            if (documentTitle != null)
+                metadata["documentTitle"] = documentTitle;
+
             resultItems.Add(new SearchResultItem
             {
                 Id = item.Id,
-                Title = item.Title,
+                Title = BuildChunkDisplayTitle(chunkText),
+                DocumentTitle = documentTitle,
                 Description = item.Description,
                 Type = item.Type,
                 Category = item.Category,
                 Url = item.Url,
                 ImageUrl = item.ImageUrl,
                 Highlight = GenerateHighlight(item.Content, sanitizedQuery),
-                Metadata = item.Metadata,
+                Metadata = metadata,
                 RelevanceScore = relevancePercent,
                 CreatedAt = item.CreatedAt,
                 ModifiedAt = item.ModifiedAt
@@ -102,16 +115,24 @@ public partial class SearchService : ISearchService
 
         response.FacetCounts = facetCounts;
 
+        if (request.PageNumber == 1 && peakRawScore is > 0)
+            response.PeakRelevanceScore = peakRawScore;
+
         _logger.LogInformation(
             "Search completed in {ElapsedMs}ms: Query='{Query}', Results={Count}, Total={Total}",
             stopwatch.ElapsedMilliseconds, sanitizedQuery, results.Count, totalCount);
 
-        return await ApplyFeaturedAnswerAsync(
-            response,
-            sanitizedQuery,
-            results,
-            normalized,
-            cancellationToken).ConfigureAwait(false);
+        if (request.PageNumber == 1)
+        {
+            return await ApplyFeaturedAnswerAsync(
+                response,
+                sanitizedQuery,
+                results,
+                normalized,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return response;
     }
 
     private async Task<SearchResponse> ApplyFeaturedAnswerAsync(
@@ -133,7 +154,6 @@ public partial class SearchService : ISearchService
 
         var highRelevance = indexed
             .Where(x => x.relevancePercent >= threshold)
-            .OrderByDescending(x => x.relevancePercent)
             .Take(topN)
             .ToList();
 
@@ -155,7 +175,6 @@ public partial class SearchService : ISearchService
         else if (indexed.Count > 0)
         {
             excerpts = indexed
-                .OrderByDescending(x => x.relevancePercent)
                 .Take(topN)
                 .Select(x => new SearchExcerpt
                 {
@@ -185,9 +204,11 @@ public partial class SearchService : ISearchService
     }
 
     /// <summary>
-    /// Normalizes Azure @search.score (or mock scores) to 0–100 within the current page.
+    /// Maps raw @search.score to 0–100 using the page-1 top result's score (Azure relevance order).
     /// </summary>
-    private static IReadOnlyList<double> NormalizeRelevancePercents(IReadOnlyList<SearchableItem> items)
+    private static IReadOnlyList<double> NormalizeRelevancePercents(
+        IReadOnlyList<SearchableItem> items,
+        double? peakRawScore)
     {
         if (items.Count == 0)
             return Array.Empty<double>();
@@ -201,7 +222,7 @@ public partial class SearchService : ISearchService
                 .ToList();
         }
 
-        var max = rawScores.Max(s => s ?? 0);
+        var max = peakRawScore ?? rawScores.Max(s => s ?? 0);
         if (max <= 0)
             return items.Select(_ => 0.0).ToList();
 
@@ -212,6 +233,23 @@ public partial class SearchService : ISearchService
                 return Math.Min(100, Math.Round(s / max * 100, 1));
             })
             .ToList();
+    }
+
+    private static string BuildChunkDisplayTitle(string chunkText, int maxLength = 55)
+    {
+        if (string.IsNullOrWhiteSpace(chunkText))
+            return string.Empty;
+
+        var trimmed = chunkText.Trim();
+        if (trimmed.Length <= maxLength)
+            return trimmed;
+
+        var slice = trimmed[..maxLength];
+        var lastSpace = slice.LastIndexOf(' ');
+        if (lastSpace > maxLength / 2)
+            slice = slice[..lastSpace];
+
+        return slice.TrimEnd() + "...";
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyList<string>>? BuildFiltersFromRequest(SearchRequest request)

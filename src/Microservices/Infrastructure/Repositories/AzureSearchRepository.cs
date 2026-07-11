@@ -257,7 +257,6 @@ public class AzureSearchRepository : ISearchRepository
                 ImageUrl = null,
                 Tags = tags,
                 Metadata = metadata,
-                CreatedAt = DateTime.UtcNow,
                 ModifiedAt = null,
                 IsActive = GetBool(doc, "commercial_safe", true)
             };

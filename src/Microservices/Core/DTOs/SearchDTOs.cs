@@ -63,6 +63,8 @@ public class SearchResultItem
     public string? Highlight { get; set; } // Highlighted matching text
     public Dictionary<string, string> Metadata { get; set; } = new();
     public double RelevanceScore { get; set; }
+    /// <summary>Publication year from the search index (e.g. Azure field "year").</summary>
+    public string? Year { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? ModifiedAt { get; set; }
 }

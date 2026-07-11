@@ -86,6 +86,8 @@ public partial class SearchService : ISearchService
             if (documentTitle != null)
                 metadata["documentTitle"] = documentTitle;
 
+            metadata.TryGetValue("year", out var year);
+
             resultItems.Add(new SearchResultItem
             {
                 Id = item.Id,
@@ -99,6 +101,7 @@ public partial class SearchService : ISearchService
                 Highlight = GenerateHighlight(item.Content, sanitizedQuery),
                 Metadata = metadata,
                 RelevanceScore = relevancePercent,
+                Year = string.IsNullOrWhiteSpace(year) ? null : year.Trim(),
                 CreatedAt = item.CreatedAt,
                 ModifiedAt = item.ModifiedAt
             });

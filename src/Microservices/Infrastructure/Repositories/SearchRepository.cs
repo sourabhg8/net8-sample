@@ -117,6 +117,29 @@ public class SearchRepository : ISearchRepository
         return facets;
     }
 
+    public async Task<IReadOnlyList<SearchableItem>> SearchAdcChunksByDocumentTitleAsync(
+        string documentTitle,
+        int topN = 5,
+        CancellationToken cancellationToken = default)
+    {
+        await Task.Delay(10, cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(documentTitle))
+            return Array.Empty<SearchableItem>();
+
+        var adcTerms = new[] { "adc", "antibody", "payload", "linker" };
+        var matching = _mockData
+            .Where(item => item.IsActive &&
+                           item.Title.Equals(documentTitle.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Where(item => adcTerms.Any(term =>
+                item.Content.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                item.Description.Contains(term, StringComparison.OrdinalIgnoreCase)))
+            .Take(topN > 0 ? topN : 5)
+            .ToList();
+
+        return matching;
+    }
+
     private static double CalculateRelevanceScore(SearchableItem item, string query)
     {
         if (string.IsNullOrEmpty(query)) return 0;

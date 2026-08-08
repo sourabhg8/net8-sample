@@ -53,7 +53,7 @@ public class AzureSearchRepository : ISearchRepository
         };
 
         // Relevance order from Azure (@search.score); no local re-sort in SearchService.
-        options.OrderBy.Add("search.score() desc");
+        //options.OrderBy.Add("search.score() desc");
 
         if (_settings.SelectFields?.Count > 0)
         {
@@ -146,6 +146,78 @@ public class AzureSearchRepository : ISearchRepository
         }
 
         return facets;
+    }
+
+    public async Task<IReadOnlyList<SearchableItem>> SearchAdcChunksByDocumentTitleAsync(
+        string documentTitle,
+        int topN = 5,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentTitle))
+            return Array.Empty<SearchableItem>();
+
+        var size = topN > 0 ? topN : 5;
+        var filterParts = BuildFilterExpression(null, null, null);
+        filterParts.Add(ODataFilterEq("title", documentTitle.Trim()));
+
+        var options = new SearchOptions
+        {
+            Filter = string.Join(" and ", filterParts),
+            Size = size,
+            IncludeTotalCount = false
+        };
+
+        if (_settings.SelectFields?.Count > 0)
+        {
+            foreach (var field in _settings.SelectFields)
+                options.Select.Add(field);
+        }
+        else
+        {
+            options.Select.Add("chunk_id");
+            options.Select.Add("title");
+            options.Select.Add("chunk");
+        }
+
+        const string adcSearchQuery =
+            "ADC name antibody name payload name linker name antibody-drug conjugate ADC antibody payload linker";
+
+        if (_settings.VectorSearchEnabled && !string.IsNullOrWhiteSpace(_settings.VectorFieldName))
+        {
+            options.VectorSearch = new VectorSearchOptions
+            {
+                Queries =
+                {
+                    new VectorizableTextQuery(adcSearchQuery)
+                    {
+                        Fields = { _settings.VectorFieldName },
+                        KNearestNeighborsCount = Math.Max(size, _settings.VectorK > 0 ? _settings.VectorK : 5)
+                    }
+                }
+            };
+        }
+
+        SearchResults<SearchDocument> response = await _searchClient.SearchAsync<SearchDocument>(
+            adcSearchQuery,
+            options,
+            cancellationToken).ConfigureAwait(false);
+
+        var results = new List<SearchableItem>();
+        await foreach (var result in response.GetResultsAsync().WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            var item = MapMedAiDocumentToSearchableItem(result.Document);
+            if (item != null)
+            {
+                item.SearchScore = result.Score;
+                results.Add(item);
+            }
+        }
+
+        _logger.LogInformation(
+            "ADC chunk search completed: Title='{Title}', Chunks={Count}",
+            documentTitle, results.Count);
+
+        return results;
     }
 
     private List<string> BuildFilterExpression(

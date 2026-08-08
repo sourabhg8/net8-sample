@@ -16,4 +16,22 @@ public interface ISearchCompletionService
         IReadOnlyList<SearchExcerpt> excerpts,
         bool insufficientHighRelevanceExcerpts,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Summarizes ADC-related fields from document chunks (JSON structured response).
+    /// </summary>
+    Task<DocumentAdcInfoResponse?> GetDocumentAdcInfoAsync(
+        string documentTitle,
+        string? searchQuery,
+        IReadOnlyList<SearchExcerpt> excerpts,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Generates a plain-text document summary (~100–120 words) from chunks via completion API.
+    /// </summary>
+    Task<string?> GetDocumentChunkSummaryAsync(
+        string documentTitle,
+        string? searchQuery,
+        IReadOnlyList<SearchExcerpt> excerpts,
+        CancellationToken cancellationToken = default);
 }

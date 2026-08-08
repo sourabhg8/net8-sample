@@ -28,6 +28,7 @@ public static class ServiceCollectionExtensions
         services.Configure<SearchCompletionSettings>(configuration.GetSection(SearchCompletionSettings.SectionName));
         services.Configure<AppSettings>(configuration.GetSection(AppSettings.SectionName));
         services.Configure<PasswordSettings>(configuration.GetSection(PasswordSettings.SectionName));
+        services.Configure<PreferredSearchSettings>(configuration.GetSection(PreferredSearchSettings.SectionName));
 
         return services;
     }
@@ -69,8 +70,9 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration)
     {
         // Register Cosmos DB repositories
-        services.AddScoped<IUserRepository, UserRepository>();
-        services.AddScoped<IOrganizationRepository, OrganizationRepository>();
+        services.AddScoped<IUserRepository, CosmosUserRepository>();
+        services.AddScoped<IOrganizationRepository, CosmosOrganizationRepository>();
+        services.AddScoped<IPreferredSearchRepository, CosmosPreferredSearchRepository>();
 
         // Search: use Azure AI Search when configured, otherwise in-memory mock
         var azureSearchSettings = configuration.GetSection(AzureSearchSettings.SectionName).Get<AzureSearchSettings>();
@@ -90,6 +92,8 @@ public static class ServiceCollectionExtensions
             client.Timeout = TimeSpan.FromSeconds(120);
         });
         services.AddScoped<ISearchService, SearchService>();
+        services.AddScoped<IPreferredSearchService, PreferredSearchService>();
+        services.AddScoped<IDocumentAdcInfoService, DocumentAdcInfoService>();
 
         return services;
     }

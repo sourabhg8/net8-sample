@@ -28,6 +28,11 @@ public class SearchCompletionSettings
     public int SummaryTopResultCount { get; set; } = 5;
 
     /// <summary>
+    /// Number of chunks to retrieve for document ADC info (default 5).
+    /// </summary>
+    public int DocumentAdcTopChunkCount { get; set; } = 5;
+
+    /// <summary>
     /// When false, no completion calls are made and AiSummary is not returned.
     /// </summary>
     public bool Enabled { get; set; } = true;

@@ -15,11 +15,16 @@ namespace Microservices.Controllers;
 public class SearchController : ControllerBase
 {
     private readonly ISearchService _searchService;
+    private readonly IDocumentAdcInfoService _documentAdcInfoService;
     private readonly ILogger<SearchController> _logger;
 
-    public SearchController(ISearchService searchService, ILogger<SearchController> logger)
+    public SearchController(
+        ISearchService searchService,
+        IDocumentAdcInfoService documentAdcInfoService,
+        ILogger<SearchController> logger)
     {
         _searchService = searchService;
+        _documentAdcInfoService = documentAdcInfoService;
         _logger = logger;
     }
 
@@ -93,6 +98,43 @@ public class SearchController : ControllerBase
         return Ok(ApiResponse<SearchResponse>.SuccessResponse(
             response,
             $"Found {response.TotalResults} results",
+            correlationId));
+    }
+
+    /// <summary>
+    /// Retrieves ADC-related summary and structured fields for a document by exact title match.
+    /// </summary>
+    [HttpPost("document-adc-info")]
+    [Authorize]
+    [ProducesResponseType(typeof(ApiResponse<DocumentAdcInfoResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<DocumentAdcInfoResponse>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<DocumentAdcInfoResponse>), StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<ApiResponse<DocumentAdcInfoResponse>>> GetDocumentAdcInfo(
+        [FromBody] DocumentAdcInfoRequest request,
+        CancellationToken cancellationToken)
+    {
+        var correlationId = HttpContext.GetCorrelationId();
+
+        if (string.IsNullOrWhiteSpace(request.DocumentTitle))
+        {
+            return BadRequest(ApiResponse<DocumentAdcInfoResponse>.FailureResponse(
+                "Document title is required",
+                null,
+                correlationId));
+        }
+
+        _logger.LogInformation(
+            "Document ADC info request: Title='{Title}', SearchQuery='{SearchQuery}', CorrelationId={CorrelationId}",
+            request.DocumentTitle, request.SearchQuery, correlationId);
+
+        var response = await _documentAdcInfoService.GetDocumentAdcInfoAsync(
+            request.DocumentTitle,
+            request.SearchQuery,
+            cancellationToken);
+
+        return Ok(ApiResponse<DocumentAdcInfoResponse>.SuccessResponse(
+            response,
+            "Document ADC information retrieved",
             correlationId));
     }
 }

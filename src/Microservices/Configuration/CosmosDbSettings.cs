@@ -13,4 +13,6 @@ public class CosmosDbSettings
     public string UsersPartitionKeyPath { get; set; } = "/orgId";
     public string OrganizationsContainerName { get; set; } = "Organizations";
     public string OrganizationsPartitionKeyPath { get; set; } = "/id";
+    public string PreferredSearchesContainerName { get; set; } = "preferredSearches";
+    public string PreferredSearchesPartitionKeyPath { get; set; } = "/userId";
 }

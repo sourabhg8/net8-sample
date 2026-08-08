@@ -34,5 +34,13 @@ public interface ISearchRepository
         string sanitizedQuery,
         IReadOnlyDictionary<string, IReadOnlyList<string>>? filters = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Finds top chunks from documents whose title exactly matches, ranked by relevance to ADC/antibody/payload/linker terms.
+    /// </summary>
+    Task<IReadOnlyList<SearchableItem>> SearchAdcChunksByDocumentTitleAsync(
+        string documentTitle,
+        int topN = 5,
+        CancellationToken cancellationToken = default);
 }
 

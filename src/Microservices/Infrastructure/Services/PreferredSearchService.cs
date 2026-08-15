@@ -109,6 +109,48 @@ public class PreferredSearchService : IPreferredSearchService
         return MapOrdered(saved);
     }
 
+    public async Task<IReadOnlyList<PreferredSearchTermDto>> DeleteSearchTermAsync(
+        string userId,
+        string searchTerm,
+        CancellationToken cancellationToken = default)
+    {
+        var term = searchTerm?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(term))
+            throw new ValidationException("Search term is required.");
+
+        var document = await _repository.GetByUserIdAsync(userId, cancellationToken);
+        if (document == null)
+            return Array.Empty<PreferredSearchTermDto>();
+
+        var removed = document.SearchTerms.RemoveAll(t =>
+            string.Equals(t.SearchTerm, term, StringComparison.OrdinalIgnoreCase));
+
+        if (removed == 0)
+            return MapOrdered(document);
+
+        document.UpdatedAt = DateTime.UtcNow;
+        var saved = await _repository.UpsertAsync(document, cancellationToken);
+
+        _logger.LogInformation("Deleted preferred search for user {UserId}: {SearchTerm}", userId, term);
+        return MapOrdered(saved);
+    }
+
+    public async Task<IReadOnlyList<PreferredSearchTermDto>> DeleteAllSearchTermsAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        var document = await _repository.GetByUserIdAsync(userId, cancellationToken);
+        if (document == null || document.SearchTerms.Count == 0)
+            return Array.Empty<PreferredSearchTermDto>();
+
+        document.SearchTerms.Clear();
+        document.UpdatedAt = DateTime.UtcNow;
+        var saved = await _repository.UpsertAsync(document, cancellationToken);
+
+        _logger.LogInformation("Deleted all preferred searches for user {UserId}", userId);
+        return MapOrdered(saved);
+    }
+
     private static PreferredSearchDocument CreateEmptyDocument(string userId) => new()
     {
         Id = userId,

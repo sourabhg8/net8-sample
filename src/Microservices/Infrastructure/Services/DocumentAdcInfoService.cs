@@ -82,6 +82,17 @@ public class DocumentAdcInfoService : IDocumentAdcInfoService
             .GetDocumentAdcInfoAsync(title, query, excerpts, cancellationToken)
             .ConfigureAwait(false);
 
+        if (extracted != null && HasAnyAdcField(extracted))
+        {
+            _logger.LogDebug(
+                "ADC fields extracted for '{Title}': Adc={Adc}, Antibody={Antibody}, Payload={Payload}, Linker={Linker}",
+                title, extracted.AdcName, extracted.AntibodyName, extracted.PayloadName, extracted.LinkerName);
+        }
+        else
+        {
+            _logger.LogInformation("No ADC fields extracted from completion API for '{Title}'", title);
+        }
+
         return new DocumentAdcInfoResponse
         {
             DocumentTitle = title,
@@ -112,4 +123,10 @@ public class DocumentAdcInfoService : IDocumentAdcInfoService
 
         return "Unable to generate a summary at this time.";
     }
+
+    private static bool HasAnyAdcField(DocumentAdcInfoResponse response) =>
+        !string.IsNullOrWhiteSpace(response.AdcName)
+        || !string.IsNullOrWhiteSpace(response.AntibodyName)
+        || !string.IsNullOrWhiteSpace(response.PayloadName)
+        || !string.IsNullOrWhiteSpace(response.LinkerName);
 }

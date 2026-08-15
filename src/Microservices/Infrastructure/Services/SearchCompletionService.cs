@@ -75,25 +75,48 @@ public class SearchCompletionService : ISearchCompletionService
         if (!_settings.IsConfigured)
             return null;
 
-        var systemPrompt = BuildAdcSystemPrompt();
-        var userContent = BuildAdcExtractionPrompt(documentTitle, searchQuery, excerpts);
+        var result = await ExtractAdcFieldsInternalAsync(documentTitle, searchQuery, excerpts, strictMode: false, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (result != null && HasAnyAdcField(result))
+            return result;
+
+        _logger.LogInformation(
+            "ADC field extraction returned no values for '{Title}'; retrying with focused extraction prompt",
+            documentTitle);
+
+        var retry = await ExtractAdcFieldsInternalAsync(documentTitle, searchQuery, excerpts, strictMode: true, cancellationToken)
+            .ConfigureAwait(false);
+
+        return retry ?? result;
+    }
+
+    private async Task<DocumentAdcInfoResponse?> ExtractAdcFieldsInternalAsync(
+        string documentTitle,
+        string? searchQuery,
+        IReadOnlyList<SearchExcerpt> excerpts,
+        bool strictMode,
+        CancellationToken cancellationToken)
+    {
+        var systemPrompt = BuildAdcFieldsSystemPrompt(strictMode);
+        var userContent = BuildAdcFieldsExtractionPrompt(documentTitle, excerpts);
 
         var text = await SendCompletionAsync(
             systemPrompt,
             userContent,
-            temperature: 0.2,
-            maxTokens: 900,
+            temperature: 0.1,
+            maxTokens: 500,
             useJsonFormat: true,
             cancellationToken).ConfigureAwait(false);
 
         if (string.IsNullOrWhiteSpace(text))
         {
-            _logger.LogInformation("ADC info JSON completion failed; retrying without response_format");
+            _logger.LogInformation("ADC fields JSON completion failed; retrying without response_format");
             text = await SendCompletionAsync(
                 systemPrompt,
                 userContent,
-                temperature: 0.2,
-                maxTokens: 900,
+                temperature: 0.1,
+                maxTokens: 500,
                 useJsonFormat: false,
                 cancellationToken).ConfigureAwait(false);
         }
@@ -101,19 +124,23 @@ public class SearchCompletionService : ISearchCompletionService
         if (string.IsNullOrWhiteSpace(text))
             return null;
 
-        var parsed = ParseAdcInfoResponse(text);
-        if (parsed != null && !string.IsNullOrWhiteSpace(parsed.Summary))
+        var parsed = ParseAdcFieldsResponse(text);
+        if (parsed != null)
             return parsed;
 
-        return new DocumentAdcInfoResponse
-        {
-            Summary = parsed?.Summary ?? text.Trim(),
-            AdcName = parsed?.AdcName ?? string.Empty,
-            AntibodyName = parsed?.AntibodyName ?? string.Empty,
-            PayloadName = parsed?.PayloadName ?? string.Empty,
-            LinkerName = parsed?.LinkerName ?? string.Empty
-        };
+        _logger.LogWarning(
+            "Failed to parse ADC fields from completion response for '{Title}'. Response preview: {Preview}",
+            documentTitle,
+            text.Length > 300 ? text[..300] + "..." : text);
+
+        return null;
     }
+
+    private static bool HasAnyAdcField(DocumentAdcInfoResponse response) =>
+        !string.IsNullOrWhiteSpace(response.AdcName)
+        || !string.IsNullOrWhiteSpace(response.AntibodyName)
+        || !string.IsNullOrWhiteSpace(response.PayloadName)
+        || !string.IsNullOrWhiteSpace(response.LinkerName);
 
     public async Task<string?> GetDocumentChunkSummaryAsync(
         string documentTitle,
@@ -250,45 +277,49 @@ public class SearchCompletionService : ISearchCompletionService
         }
     }
 
-    private static string BuildAdcSystemPrompt()
+    private static string BuildAdcFieldsSystemPrompt(bool strictMode)
     {
+        var strictHint = strictMode
+            ? """
+              Search every excerpt carefully. Look for abbreviations, trade names, generic names, and parenthetical mentions.
+              Common patterns: "ADC", "antibody-drug conjugate", "mAb", "cytotoxic payload", "linker", "warhead", "conjugate".
+              """
+            : string.Empty;
+
         return """
-            You analyze biomedical document excerpts and extract antibody-drug conjugate (ADC) field values when present.
-            Return ONLY valid JSON with exactly these keys: summary, adcName, antibodyName, payloadName, linkerName.
+            You extract antibody-drug conjugate (ADC) metadata from biomedical document excerpts.
+            Return ONLY valid JSON with exactly these four string keys: adcName, antibodyName, payloadName, linkerName.
+            Do not include any other keys.
 
-            summary: Write one cohesive paragraph of approximately 100-120 words (do not exceed 130 words) synthesizing ALL provided document excerpts/chunks.
-            When a user search query is provided, frame the summary in that context and emphasize passages most relevant to the query.
-            Cover the main topics, methods, findings, and conclusions present in the text.
-            Always summarize what the excerpts actually discuss in clear prose—never paste or quote raw excerpt text, bullet lists, or numbered chunks.
-            Never respond with phrases like "no ADC information found", "not available", or "could not be determined" in the summary.
+            Field definitions:
+            - adcName: the ADC compound or product name (e.g. trastuzumab deruxtecan, T-DXd, Adcetris, brentuximab vedotin)
+            - antibodyName: the targeting antibody or mAb (e.g. trastuzumab, cetuximab, hRS7)
+            - payloadName: the cytotoxic drug/payload (e.g. MMAE, DM1, deruxtecan, SN-38, exatecan)
+            - linkerName: the linker chemistry or name (e.g. VC-PAB, SMCC, cleavable linker, GGFG)
 
-            adcName, antibodyName, payloadName, linkerName: extract exact names/values only when explicitly present in the excerpts; use empty string when not found.
-            Do not invent ADC field values. Base all output only on the provided excerpts.
+            """
+            + strictHint
+            + """
+            Extract values explicitly stated or clearly implied in the excerpts. Use empty string only when a field is truly absent.
+            Do not invent values. Example output:
+            {"adcName":"trastuzumab deruxtecan","antibodyName":"trastuzumab","payloadName":"deruxtecan","linkerName":"tetrapeptide-based cleavable linker"}
             """;
     }
 
-    private static string BuildAdcExtractionPrompt(
+    private static string BuildAdcFieldsExtractionPrompt(
         string documentTitle,
-        string? searchQuery,
         IReadOnlyList<SearchExcerpt> excerpts)
     {
         var sb = new StringBuilder();
         sb.AppendLine("Document title:").AppendLine(documentTitle).AppendLine();
-
-        if (!string.IsNullOrWhiteSpace(searchQuery))
-        {
-            sb.AppendLine("User search query (summarize in this context):").AppendLine(searchQuery.Trim()).AppendLine();
-        }
-
-        sb.AppendLine($"Below are the top {excerpts.Count} text chunk(s) from this document.");
-        sb.AppendLine("Write a summary of approximately 100-120 words synthesizing all chunks in the context of the search query when provided.");
-        sb.AppendLine("Then extract ADC Name, antibody name, payload name, and linker name if explicitly mentioned.");
+        sb.AppendLine("Extract adcName, antibodyName, payloadName, and linkerName from these excerpts.");
+        sb.AppendLine("Return JSON with keys: adcName, antibodyName, payloadName, linkerName.");
         sb.AppendLine();
         for (var i = 0; i < excerpts.Count; i++)
         {
             var e = excerpts[i];
             var text = e.Text.Length > 2000 ? e.Text[..2000] + "..." : e.Text;
-            sb.AppendLine($"Chunk {i + 1}:");
+            sb.AppendLine($"Excerpt {i + 1}:");
             sb.AppendLine(text);
             sb.AppendLine();
         }
@@ -296,7 +327,7 @@ public class SearchCompletionService : ISearchCompletionService
         return sb.ToString();
     }
 
-    private static DocumentAdcInfoResponse? ParseAdcInfoResponse(string content)
+    private static DocumentAdcInfoResponse? ParseAdcFieldsResponse(string content)
     {
         var json = ExtractJsonObject(content);
         if (string.IsNullOrWhiteSpace(json))
@@ -306,13 +337,13 @@ public class SearchCompletionService : ISearchCompletionService
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
+
             return new DocumentAdcInfoResponse
             {
-                Summary = GetJsonString(root, "summary"),
-                AdcName = GetJsonString(root, "adcName"),
-                AntibodyName = GetJsonString(root, "antibodyName"),
-                PayloadName = GetJsonString(root, "payloadName"),
-                LinkerName = GetJsonString(root, "linkerName")
+                AdcName = GetFlexibleJsonString(root, "adcName", "adc_name", "ADCName", "ADC Name", "adc", "compoundName", "compound_name"),
+                AntibodyName = GetFlexibleJsonString(root, "antibodyName", "antibody_name", "AntibodyName", "Antibody Name", "antibody", "mAb", "monoclonalAntibody"),
+                PayloadName = GetFlexibleJsonString(root, "payloadName", "payload_name", "PayloadName", "Payload Name", "payload", "cytotoxicPayload", "drugPayload", "warhead"),
+                LinkerName = GetFlexibleJsonString(root, "linkerName", "linker_name", "LinkerName", "Linker Name", "linker", "linkerChemistry")
             };
         }
         catch
@@ -321,18 +352,62 @@ public class SearchCompletionService : ISearchCompletionService
         }
     }
 
-    private static string GetJsonString(JsonElement root, string propertyName)
+    private static string GetFlexibleJsonString(JsonElement root, params string[] propertyNames)
     {
-        if (!root.TryGetProperty(propertyName, out var prop))
-            return string.Empty;
+        foreach (var name in propertyNames)
+        {
+            var value = TryGetJsonPropertyString(root, name);
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
 
-        return prop.ValueKind switch
+        var normalizedTargets = propertyNames.Select(NormalizeJsonKey).ToHashSet(StringComparer.Ordinal);
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!normalizedTargets.Contains(NormalizeJsonKey(property.Name)))
+                continue;
+
+            var value = GetJsonElementString(property.Value);
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return string.Empty;
+    }
+
+    private static string? TryGetJsonPropertyString(JsonElement root, string propertyName)
+    {
+        if (root.TryGetProperty(propertyName, out var direct))
+            return NullIfEmpty(GetJsonElementString(direct));
+
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            return NullIfEmpty(GetJsonElementString(property.Value));
+        }
+
+        return null;
+    }
+
+    private static string GetJsonElementString(JsonElement prop) =>
+        prop.ValueKind switch
         {
             JsonValueKind.String => prop.GetString()?.Trim() ?? string.Empty,
-            JsonValueKind.Null => string.Empty,
+            JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
+            JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => prop.ToString().Trim(),
             _ => prop.ToString().Trim()
         };
-    }
+
+    private static string? NullIfEmpty(string value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private static string NormalizeJsonKey(string key) =>
+        key.Replace(" ", string.Empty, StringComparison.Ordinal)
+           .Replace("_", string.Empty, StringComparison.Ordinal)
+           .Replace("-", string.Empty, StringComparison.Ordinal)
+           .ToLowerInvariant();
 
     private static string ExtractJsonObject(string content)
     {

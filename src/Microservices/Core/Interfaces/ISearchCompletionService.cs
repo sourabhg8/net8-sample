@@ -18,7 +18,7 @@ public interface ISearchCompletionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Summarizes ADC-related fields from document chunks (JSON structured response).
+    /// Extracts ADC field values from document chunks (JSON structured response).
     /// </summary>
     Task<DocumentAdcInfoResponse?> GetDocumentAdcInfoAsync(
         string documentTitle,

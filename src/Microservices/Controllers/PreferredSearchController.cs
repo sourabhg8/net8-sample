@@ -85,6 +85,49 @@ public class PreferredSearchController : ControllerBase
             correlationId));
     }
 
+    /// <summary>
+    /// Deletes a saved search term for the current user.
+    /// </summary>
+    [HttpDelete]
+    [ProducesResponseType(typeof(ApiResponse<PreferredSearchListResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PreferredSearchListResponse>), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<ApiResponse<PreferredSearchListResponse>>> Delete(
+        [FromQuery] string searchTerm,
+        CancellationToken cancellationToken)
+    {
+        var correlationId = HttpContext.GetCorrelationId();
+        var userId = GetCurrentUserId();
+
+        _logger.LogInformation("Deleting preferred search for user {UserId}", userId);
+
+        var terms = await _preferredSearchService.DeleteSearchTermAsync(userId, searchTerm, cancellationToken);
+
+        return Ok(ApiResponse<PreferredSearchListResponse>.SuccessResponse(
+            new PreferredSearchListResponse { SearchTerms = terms.ToList() },
+            "Search term deleted successfully",
+            correlationId));
+    }
+
+    /// <summary>
+    /// Deletes all saved search terms for the current user.
+    /// </summary>
+    [HttpDelete("all")]
+    [ProducesResponseType(typeof(ApiResponse<PreferredSearchListResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<PreferredSearchListResponse>>> DeleteAll(CancellationToken cancellationToken)
+    {
+        var correlationId = HttpContext.GetCorrelationId();
+        var userId = GetCurrentUserId();
+
+        _logger.LogInformation("Deleting all preferred searches for user {UserId}", userId);
+
+        var terms = await _preferredSearchService.DeleteAllSearchTermsAsync(userId, cancellationToken);
+
+        return Ok(ApiResponse<PreferredSearchListResponse>.SuccessResponse(
+            new PreferredSearchListResponse { SearchTerms = terms.ToList() },
+            "All saved searches deleted successfully",
+            correlationId));
+    }
+
     private string GetCurrentUserId()
     {
         return User.FindFirst(ClaimTypes.NameIdentifier)?.Value

@@ -14,6 +14,7 @@ public class SearchableItem
     public string Url { get; set; } = string.Empty;
     public string? ImageUrl { get; set; }
     public List<string> Tags { get; set; } = new();
+    public List<string> Authors { get; set; } = new();
     public Dictionary<string, string> Metadata { get; set; } = new();
     public DateTime CreatedAt { get; set; }
     public DateTime? ModifiedAt { get; set; }

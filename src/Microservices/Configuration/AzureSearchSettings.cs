@@ -38,7 +38,7 @@ public class AzureSearchSettings
 
     /// <summary>
     /// Facet definitions: each entry is a field name, optionally with options.
-    /// Examples: "source", "year", "source,count:10,sort:count", "text_source,count:5".
+    /// Examples: "source", "publishYear", "source,count:10,sort:count", "text_source,count:5".
     /// </summary>
     public List<string> FacetFields { get; set; } = new();
 
@@ -49,7 +49,7 @@ public class AzureSearchSettings
 
     /// <summary>
     /// Fields to include in search results (select clause). When empty, all retrievable fields are returned.
-    /// Example: id, pmcid, pmid, title, authors, keywords, year, commercial_safe, source, text_source, sourceUrl, blobUrl, blobName, containerName, chunk
+    /// Example: id, pmcid, pmid, title, authors, keywords, publishYear, publishDate, commercial_safe, source, text_source, sourceUrl, blobUrl, blobName, containerName, chunk
     /// </summary>
     public List<string> SelectFields { get; set; } = new();
 

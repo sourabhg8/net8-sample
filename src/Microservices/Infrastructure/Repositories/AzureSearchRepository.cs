@@ -64,21 +64,7 @@ public class AzureSearchRepository : ISearchRepository
         foreach (var facet in _settings.FacetFields ?? new List<string>())
             options.Facets.Add(facet);
 
-        // Hybrid search: full-text (searchText) + vector query. Azure AI Search vectorizes the text server-side.
-        if (_settings.VectorSearchEnabled && !string.IsNullOrWhiteSpace(_settings.VectorFieldName))
-        {
-            options.VectorSearch = new VectorSearchOptions
-            {
-                Queries =
-                {
-                    new VectorizableTextQuery(sanitizedQuery ?? string.Empty)
-                    {
-                        Fields = { _settings.VectorFieldName },
-                        KNearestNeighborsCount = _settings.VectorK > 0 ? _settings.VectorK : 5
-                    }
-                }
-            };
-        }
+        ConfigureVectorSearch(options, sanitizedQuery);
 
         var searchText = string.IsNullOrWhiteSpace(sanitizedQuery) ? "*" : sanitizedQuery;
         SearchResults<SearchDocument> response = await _searchClient.SearchAsync<SearchDocument>(
@@ -111,39 +97,34 @@ public class AzureSearchRepository : ISearchRepository
         IReadOnlyDictionary<string, IReadOnlyList<string>>? filters = null,
         CancellationToken cancellationToken = default)
     {
-        var filterParts = BuildFilterExpression(null, null, filters);
-        var options = new SearchOptions
-        {
-            Filter = filterParts.Count > 0 ? string.Join(" and ", filterParts) : null,
-            Size = 0,
-            IncludeTotalCount = false
-        };
-
-        foreach (var facet in _settings.FacetFields ?? new List<string>())
-            options.Facets.Add(facet);
+        var facetSpecs = _settings.FacetFields ?? new List<string>();
+        if (facetSpecs.Count == 0)
+            return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         var searchText = string.IsNullOrWhiteSpace(sanitizedQuery) ? "*" : sanitizedQuery;
-        SearchResults<SearchDocument> response = await _searchClient.SearchAsync<SearchDocument>(
-            searchText,
-            options,
-            cancellationToken).ConfigureAwait(false);
+
+        // One facet query per field, excluding that field from filters so all facet values stay visible.
+        var facetTasks = facetSpecs.Select(facetSpec =>
+        {
+            var fieldName = GetFacetFieldName(facetSpec);
+            var filterParts = BuildFilterExpression(null, null, filters, excludeFilterField: fieldName);
+            var options = new SearchOptions
+            {
+                Filter = filterParts.Count > 0 ? string.Join(" and ", filterParts) : null,
+                Size = 0,
+                IncludeTotalCount = false
+            };
+            options.Facets.Add(facetSpec);
+            ConfigureVectorSearch(options, sanitizedQuery);
+
+            return _searchClient.SearchAsync<SearchDocument>(searchText, options, cancellationToken);
+        }).ToList();
+
+        var responses = await Task.WhenAll(facetTasks).ConfigureAwait(false);
 
         var facets = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-
-        if (response.Facets != null)
-        {
-            foreach (var kv in response.Facets)
-            {
-                var fieldName = kv.Key;
-                foreach (var facetResult in kv.Value ?? Array.Empty<FacetResult>())
-                {
-                    var valueStr = facetResult.Value?.ToString() ?? string.Empty;
-                    var count = (int)(facetResult.Count ?? 0);
-                    if (!string.IsNullOrEmpty(valueStr))
-                        facets[$"{fieldName}:{valueStr}"] = count;
-                }
-            }
-        }
+        foreach (var response in responses)
+            MergeFacetResults(facets, response);
 
         return facets;
     }
@@ -223,7 +204,8 @@ public class AzureSearchRepository : ISearchRepository
     private List<string> BuildFilterExpression(
         string? category,
         string? type,
-        IReadOnlyDictionary<string, IReadOnlyList<string>>? filters)
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? filters,
+        string? excludeFilterField = null)
     {
         var parts = new List<string>();
 
@@ -245,6 +227,10 @@ public class AzureSearchRepository : ISearchRepository
             {
                 if (string.IsNullOrWhiteSpace(kv.Key) || kv.Value == null || kv.Value.Count == 0)
                     continue;
+                if (!string.IsNullOrWhiteSpace(excludeFilterField) &&
+                    string.Equals(kv.Key, excludeFilterField, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 var values = kv.Value.Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
                 if (values.Count == 0)
                     continue;
@@ -256,6 +242,50 @@ public class AzureSearchRepository : ISearchRepository
         }
 
         return parts;
+    }
+
+    private void ConfigureVectorSearch(SearchOptions options, string? sanitizedQuery)
+    {
+        if (!_settings.VectorSearchEnabled || string.IsNullOrWhiteSpace(_settings.VectorFieldName))
+            return;
+
+        options.VectorSearch = new VectorSearchOptions
+        {
+            Queries =
+            {
+                new VectorizableTextQuery(sanitizedQuery ?? string.Empty)
+                {
+                    Fields = { _settings.VectorFieldName },
+                    KNearestNeighborsCount = _settings.VectorK > 0 ? _settings.VectorK : 5
+                }
+            }
+        };
+    }
+
+    private static string GetFacetFieldName(string facetSpec)
+    {
+        var comma = facetSpec.IndexOf(',');
+        return comma >= 0 ? facetSpec[..comma].Trim() : facetSpec.Trim();
+    }
+
+    private static void MergeFacetResults(
+        Dictionary<string, int> facets,
+        SearchResults<SearchDocument> response)
+    {
+        if (response.Facets == null)
+            return;
+
+        foreach (var kv in response.Facets)
+        {
+            var fieldName = kv.Key;
+            foreach (var facetResult in kv.Value ?? Array.Empty<FacetResult>())
+            {
+                var valueStr = facetResult.Value?.ToString() ?? string.Empty;
+                var count = (int)(facetResult.Count ?? 0);
+                if (!string.IsNullOrEmpty(valueStr))
+                    facets[$"{fieldName}:{valueStr}"] = count;
+            }
+        }
     }
 
     private static string ODataFilterOr(string fieldName, IReadOnlyList<string> values)
@@ -272,7 +302,7 @@ public class AzureSearchRepository : ISearchRepository
 
     /// <summary>
     /// Maps medai-pmc-chunks index document to SearchableItem.
-    /// Fields: chunk_id, id, pmcid, pmid, title, authors, keywords, year, commercial_safe, source, text_source, sourceUrl, blobUrl, blobName, containerName, chunk.
+    /// Fields: chunk_id, id, pmcid, pmid, title, authors, keywords, publishYear, publishDate, commercial_safe, source, text_source, sourceUrl, blobUrl, blobName, containerName, chunk.
     /// </summary>
     private static SearchableItem? MapMedAiDocumentToSearchableItem(SearchDocument doc)
     {
@@ -302,20 +332,17 @@ public class AzureSearchRepository : ISearchRepository
                 metadata["documentTitle"] = title.Trim();
             AddMeta(metadata, doc, "pmcid", "pmcid");
             AddMeta(metadata, doc, "pmid", "pmid");
-            AddMeta(metadata, doc, "year", "year");
+            AddMeta(metadata, doc, "publishYear", "publishYear");
+            AddMeta(metadata, doc, "publishDate", "publishDate");
             AddMeta(metadata, doc, "source", "source");
             AddMeta(metadata, doc, "text_source", "text_source");
             AddMeta(metadata, doc, "blobUrl", "blobUrl");
             AddMeta(metadata, doc, "blobName", "blobName");
             AddMeta(metadata, doc, "containerName", "containerName");
-            if (doc.TryGetValue("authors", out var authorsObj) && authorsObj is JsonElement ae && ae.ValueKind == JsonValueKind.Array)
-            {
-                var authorList = new List<string>();
-                foreach (var e in ae.EnumerateArray())
-                    if (e.ValueKind == JsonValueKind.String)
-                        authorList.Add(e.GetString() ?? string.Empty);
-                metadata["authors"] = string.Join("; ", authorList);
-            }
+
+            var authors = ExtractStringArray(doc, "authors");
+            if (authors.Count > 0)
+                metadata["authors"] = string.Join(", ", authors);
 
             return new SearchableItem
             {
@@ -328,6 +355,7 @@ public class AzureSearchRepository : ISearchRepository
                 Url = GetString(doc, "sourceUrl") ?? string.Empty,
                 ImageUrl = null,
                 Tags = tags,
+                Authors = authors,
                 Metadata = metadata,
                 ModifiedAt = null,
                 IsActive = GetBool(doc, "commercial_safe", true)
@@ -357,6 +385,50 @@ public class AzureSearchRepository : ISearchRepository
         if (v is JsonElement je)
             return je.GetString();
         return v?.ToString();
+    }
+
+    private static List<string> ExtractStringArray(SearchDocument doc, string fieldName)
+    {
+        if (!doc.TryGetValue(fieldName, out var obj) || obj == null)
+            return new List<string>();
+
+        if (obj is JsonElement je && je.ValueKind == JsonValueKind.Array)
+        {
+            return je.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.String)
+                .Select(e => e.GetString() ?? string.Empty)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s.Trim())
+                .ToList();
+        }
+
+        if (obj is IEnumerable<string> stringEnumerable)
+        {
+            return stringEnumerable
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s.Trim())
+                .ToList();
+        }
+
+        if (obj is System.Collections.IEnumerable enumerable && obj is not string)
+        {
+            var values = new List<string>();
+            foreach (var item in enumerable)
+            {
+                var value = item switch
+                {
+                    null => null,
+                    string s => s,
+                    JsonElement element when element.ValueKind == JsonValueKind.String => element.GetString(),
+                    _ => item.ToString()
+                };
+                if (!string.IsNullOrWhiteSpace(value))
+                    values.Add(value.Trim());
+            }
+            return values;
+        }
+
+        return new List<string>();
     }
 
     private static bool GetBool(SearchDocument doc, string key, bool defaultValue)

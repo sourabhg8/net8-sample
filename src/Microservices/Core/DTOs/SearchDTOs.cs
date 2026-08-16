@@ -23,8 +23,8 @@ public class SearchRequest
 
     /// <summary>
     /// Optional filters and selected facet values from the frontend.
-    /// Key = index field name (e.g. source, year, text_source). Value = list of selected values.
-    /// Example: { "source": ["PubMed"], "year": ["2023", "2024"] }
+    /// Key = index field name (e.g. source, publishYear, text_source). Value = list of selected values.
+    /// Example: { "source": ["PubMed"], "publishYear": ["2023", "2024"] }
     /// </summary>
     public Dictionary<string, List<string>>? Filters { get; set; }
 
@@ -63,8 +63,12 @@ public class SearchResultItem
     public string? Highlight { get; set; } // Highlighted matching text
     public Dictionary<string, string> Metadata { get; set; } = new();
     public double RelevanceScore { get; set; }
-    /// <summary>Publication year from the search index (e.g. Azure field "year").</summary>
+    /// <summary>Publication year from the search index (Azure field "publishYear", string).</summary>
     public string? Year { get; set; }
+    /// <summary>Publication date from the search index (Azure field "publishDate", string).</summary>
+    public string? PublishDate { get; set; }
+    /// <summary>Authors from the search index (Azure field "authors", collection of strings).</summary>
+    public List<string> Authors { get; set; } = new();
     public DateTime CreatedAt { get; set; }
     public DateTime? ModifiedAt { get; set; }
 }

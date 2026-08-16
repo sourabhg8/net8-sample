@@ -86,7 +86,11 @@ public partial class SearchService : ISearchService
             if (documentTitle != null)
                 metadata["documentTitle"] = documentTitle;
 
-            metadata.TryGetValue("year", out var year);
+            metadata.TryGetValue("publishYear", out var year);
+            if (string.IsNullOrWhiteSpace(year))
+                metadata.TryGetValue("year", out year);
+
+            metadata.TryGetValue("publishDate", out var publishDate);
 
             resultItems.Add(new SearchResultItem
             {
@@ -102,6 +106,10 @@ public partial class SearchService : ISearchService
                 Metadata = metadata,
                 RelevanceScore = relevancePercent,
                 Year = string.IsNullOrWhiteSpace(year) ? null : year.Trim(),
+                PublishDate = string.IsNullOrWhiteSpace(publishDate) ? null : publishDate.Trim(),
+                Authors = item.Authors.Count > 0
+                    ? item.Authors
+                    : ParseAuthorsFromMetadata(metadata),
                 CreatedAt = item.CreatedAt,
                 ModifiedAt = item.ModifiedAt
             });
@@ -269,6 +277,17 @@ public partial class SearchService : ISearchService
                 dict[kv.Key] = list;
         }
         return dict.Count > 0 ? dict : null;
+    }
+
+    private static List<string> ParseAuthorsFromMetadata(Dictionary<string, string> metadata)
+    {
+        if (!metadata.TryGetValue("authors", out var authorsValue) || string.IsNullOrWhiteSpace(authorsValue))
+            return new List<string>();
+
+        return authorsValue
+            .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
     }
 
     public string SanitizeQuery(string query)

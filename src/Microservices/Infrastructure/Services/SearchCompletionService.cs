@@ -443,7 +443,7 @@ public class SearchCompletionService : ISearchCompletionService
             return sb.ToString();
         }
 
-        sb.AppendLine("Search excerpts (relevance % is relative to the top-ranked result):");
+        sb.AppendLine("Search excerpts (relevance %: tier at #1 peak, others scaled vs peak raw score):");
         for (var i = 0; i < excerpts.Count; i++)
         {
             var e = excerpts[i];

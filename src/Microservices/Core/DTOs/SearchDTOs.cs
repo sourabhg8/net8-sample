@@ -63,6 +63,8 @@ public class SearchResultItem
     public string? Highlight { get; set; } // Highlighted matching text
     public Dictionary<string, string> Metadata { get; set; } = new();
     public double RelevanceScore { get; set; }
+    /// <summary>Raw Azure @search.score for this hit (unitless ranking value; null when unavailable).</summary>
+    public double? SearchScore { get; set; }
     /// <summary>Publication year from the search index (Azure field "publishYear", string).</summary>
     public string? Year { get; set; }
     /// <summary>Publication date from the search index (Azure field "publishDate", string).</summary>

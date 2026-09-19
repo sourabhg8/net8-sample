@@ -105,6 +105,7 @@ public partial class SearchService : ISearchService
                 Highlight = GenerateHighlight(item.Content, sanitizedQuery),
                 Metadata = metadata,
                 RelevanceScore = relevancePercent,
+                SearchScore = item.SearchScore,
                 Year = string.IsNullOrWhiteSpace(year) ? null : year.Trim(),
                 PublishDate = string.IsNullOrWhiteSpace(publishDate) ? null : publishDate.Trim(),
                 Authors = item.Authors.Count > 0
@@ -156,56 +157,26 @@ public partial class SearchService : ISearchService
         if (!_completionSettings.IsConfigured)
             return response;
 
-        var threshold = _completionSettings.RelevanceThresholdPercent;
         var topN = Math.Max(1, _completionSettings.SummaryTopResultCount);
+        var take = Math.Min(topN, rawResults.Count);
 
-        var indexed = rawResults
-            .Select((item, i) => (item, relevancePercent: relevancePercents[i]))
-            .ToList();
-
-        var highRelevance = indexed
-            .Where(x => x.relevancePercent >= threshold)
-            .Take(topN)
-            .ToList();
-
-        IReadOnlyList<SearchExcerpt> excerpts;
-        bool insufficient;
-
-        if (highRelevance.Count > 0)
-        {
-            excerpts = highRelevance
-                .Select(x => new SearchExcerpt
+        var excerpts = Enumerable.Range(0, take)
+            .Select(i =>
+            {
+                var item = rawResults[i];
+                return new SearchExcerpt
                 {
-                    Title = x.item.Title,
-                    Text = string.IsNullOrEmpty(x.item.Content) ? x.item.Description : x.item.Content,
-                    RelevancePercent = x.relevancePercent
-                })
-                .ToList();
-            insufficient = false;
-        }
-        else if (indexed.Count > 0)
-        {
-            excerpts = indexed
-                .Take(topN)
-                .Select(x => new SearchExcerpt
-                {
-                    Title = x.item.Title,
-                    Text = string.IsNullOrEmpty(x.item.Content) ? x.item.Description : x.item.Content,
-                    RelevancePercent = x.relevancePercent
-                })
-                .ToList();
-            insufficient = true;
-        }
-        else
-        {
-            excerpts = Array.Empty<SearchExcerpt>();
-            insufficient = true;
-        }
+                    Title = item.Title,
+                    Text = string.IsNullOrEmpty(item.Content) ? item.Description : item.Content,
+                    RelevancePercent = relevancePercents[i]
+                };
+            })
+            .ToList();
 
         var summary = await _completionService.GetFeaturedAnswerAsync(
             sanitizedQuery,
             excerpts,
-            insufficient,
+            insufficientHighRelevanceExcerpts: false,
             cancellationToken).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(summary))
@@ -215,35 +186,79 @@ public partial class SearchService : ISearchService
     }
 
     /// <summary>
-    /// Maps raw @search.score to 0–100 using the page-1 top result's score (Azure relevance order).
+    /// Page-1 peak raw score maps to a tier-based display % (peak display). Every hit uses
+    /// (score / peak) × peak display, capped at max display %.
     /// </summary>
-    private static IReadOnlyList<double> NormalizeRelevancePercents(
+    private IReadOnlyList<double> NormalizeRelevancePercents(
         IReadOnlyList<SearchableItem> items,
         double? peakRawScore)
     {
         if (items.Count == 0)
             return Array.Empty<double>();
 
+        var maxDisplay = GetRelevanceDisplayMaxPercent();
         var rawScores = items.Select(i => i.SearchScore).ToList();
         if (rawScores.All(s => s is null or <= 0))
         {
             var n = items.Count;
             return Enumerable.Range(0, n)
-                .Select(i => n == 0 ? 0.0 : Math.Round(100.0 * (n - i) / n, 1))
+                .Select(i => n == 0 ? 0.0 : Math.Round(maxDisplay * (n - i) / n, 2))
                 .ToList();
         }
 
-        var max = peakRawScore ?? rawScores.Max(s => s ?? 0);
-        if (max <= 0)
+        var peak = peakRawScore ?? rawScores.Max(s => s ?? 0);
+        if (peak <= 0)
             return items.Select(_ => 0.0).ToList();
+
+        var peakDisplayPercent = MapRawScoreToAbsolutePercent(peak, maxDisplay) ?? maxDisplay;
 
         return items
             .Select(item =>
             {
                 var s = item.SearchScore ?? 0;
-                return Math.Min(100, Math.Round(s / max * 100, 1));
+                var display = s / peak * peakDisplayPercent;
+                return Math.Round(Math.Clamp(display, 0, maxDisplay), 2);
             })
             .ToList();
+    }
+
+    private double GetRelevanceDisplayMaxPercent()
+    {
+        var maxDisplay = _completionSettings.RelevanceDisplayMaxPercent;
+        if (maxDisplay <= 0)
+            maxDisplay = 90;
+        return Math.Min(maxDisplay, 100);
+    }
+
+    /// <summary>
+    /// Absolute display % from configured raw-score tiers, or linear anchor fallback.
+    /// </summary>
+    private double? MapRawScoreToAbsolutePercent(double rawScore, double maxDisplay)
+    {
+        var tiers = _completionSettings.RelevanceScoreTiers?
+            .Where(t => t.DisplayPercent > 0)
+            .OrderByDescending(t => t.MinRawScore)
+            .ToList();
+
+        if (tiers is { Count: > 0 })
+        {
+            foreach (var tier in tiers)
+            {
+                if (rawScore >= tier.MinRawScore)
+                    return Math.Min(maxDisplay, tier.DisplayPercent);
+            }
+
+            var lowest = tiers.MinBy(t => t.MinRawScore);
+            return lowest != null
+                ? Math.Min(maxDisplay, lowest.DisplayPercent)
+                : null;
+        }
+
+        var anchor = _completionSettings.RelevanceScoreAnchor;
+        if (anchor is > 0)
+            return Math.Min(maxDisplay, rawScore / anchor.Value * 100);
+
+        return null;
     }
 
     private static string BuildChunkDisplayTitle(string chunkText, int maxLength = 55)

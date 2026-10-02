@@ -26,6 +26,8 @@ public static class ServiceCollectionExtensions
         services.Configure<CosmosDbSettings>(configuration.GetSection(CosmosDbSettings.SectionName));
         services.Configure<AzureSearchSettings>(configuration.GetSection(AzureSearchSettings.SectionName));
         services.Configure<SearchCompletionSettings>(configuration.GetSection(SearchCompletionSettings.SectionName));
+        services.Configure<AdcAzureSearchSettings>(configuration.GetSection(AdcAzureSearchSettings.SectionName));
+        services.Configure<AdcSearchRelevanceSettings>(configuration.GetSection(AdcSearchRelevanceSettings.SectionName));
         services.Configure<AppSettings>(configuration.GetSection(AppSettings.SectionName));
         services.Configure<PasswordSettings>(configuration.GetSection(PasswordSettings.SectionName));
         services.Configure<PreferredSearchSettings>(configuration.GetSection(PreferredSearchSettings.SectionName));
@@ -81,6 +83,12 @@ public static class ServiceCollectionExtensions
         else
             services.AddSingleton<ISearchRepository, SearchRepository>();
 
+        var adcAzureSearchSettings = configuration.GetSection(AdcAzureSearchSettings.SectionName).Get<AdcAzureSearchSettings>();
+        if (adcAzureSearchSettings?.IsConfigured == true)
+            services.AddSingleton<IAdcSearchRepository, AdcAzureSearchRepository>();
+        else
+            services.AddSingleton<IAdcSearchRepository, UnconfiguredAdcSearchRepository>();
+
         // Register services
         services.AddSingleton<IPasswordService, PasswordService>(); // Singleton - stateless service
         services.AddScoped<IJwtService, JwtService>();
@@ -92,6 +100,7 @@ public static class ServiceCollectionExtensions
             client.Timeout = TimeSpan.FromSeconds(120);
         });
         services.AddScoped<ISearchService, SearchService>();
+        services.AddScoped<IAdcSearchService, AdcSearchService>();
         services.AddScoped<IPreferredSearchService, PreferredSearchService>();
         services.AddScoped<IDocumentAdcInfoService, DocumentAdcInfoService>();
 

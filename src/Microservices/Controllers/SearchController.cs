@@ -15,15 +15,18 @@ namespace Microservices.Controllers;
 public class SearchController : ControllerBase
 {
     private readonly ISearchService _searchService;
+    private readonly IAdcSearchService _adcSearchService;
     private readonly IDocumentAdcInfoService _documentAdcInfoService;
     private readonly ILogger<SearchController> _logger;
 
     public SearchController(
         ISearchService searchService,
+        IAdcSearchService adcSearchService,
         IDocumentAdcInfoService documentAdcInfoService,
         ILogger<SearchController> logger)
     {
         _searchService = searchService;
+        _adcSearchService = adcSearchService;
         _documentAdcInfoService = documentAdcInfoService;
         _logger = logger;
     }
@@ -99,6 +102,40 @@ public class SearchController : ControllerBase
             response,
             $"Found {response.TotalResults} results",
             correlationId));
+    }
+
+    /// <summary>
+    /// Hybrid search against the adc-chunks index (full-text + vector on searchVector).
+    /// </summary>
+    [HttpPost("adc")]
+    [ProducesResponseType(typeof(ApiResponse<AdcSearchResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<AdcSearchResponse>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<AdcSearchResponse>), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<ApiResponse<AdcSearchResponse>>> SearchAdc(
+        [FromBody] AdcSearchRequest request,
+        CancellationToken cancellationToken)
+    {
+        var correlationId = HttpContext.GetCorrelationId();
+
+        _logger.LogInformation(
+            "ADC search request: Query='{Query}', Page={Page}, CorrelationId={CorrelationId}",
+            request.SearchQuery, request.PageNumber, correlationId);
+
+        try
+        {
+            var response = await _adcSearchService.SearchAsync(request, cancellationToken);
+            return Ok(ApiResponse<AdcSearchResponse>.SuccessResponse(
+                response,
+                $"Found {response.TotalResults} ADC results",
+                correlationId));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "ADC search unavailable");
+            return StatusCode(
+                StatusCodes.Status503ServiceUnavailable,
+                ApiResponse<AdcSearchResponse>.FailureResponse(ex.Message, null, correlationId));
+        }
     }
 
     /// <summary>

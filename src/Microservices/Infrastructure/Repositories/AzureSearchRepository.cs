@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Microservices.Configuration;
 using Microservices.Core.Entities;
 using Microservices.Core.Interfaces;
+using Microservices.Infrastructure.Utilities;
 
 namespace Microservices.Infrastructure.Repositories;
 
@@ -308,24 +309,15 @@ public class AzureSearchRepository : ISearchRepository
     {
         try
         {
-            var id = GetString(doc, "chunk_id") ?? GetString(doc, "id");
+            var id = SearchDocumentReader.GetString(doc, "chunk_id") ?? SearchDocumentReader.GetString(doc, "id");
             if (string.IsNullOrEmpty(id))
                 return null;
 
-            var title = GetString(doc, "title") ?? string.Empty;
-            var chunk = GetString(doc, "chunk") ?? string.Empty;
+            var title = SearchDocumentReader.GetString(doc, "title") ?? string.Empty;
+            var chunk = SearchDocumentReader.GetString(doc, "chunk") ?? string.Empty;
             var description = chunk.Length > 500 ? chunk[..500] + "..." : chunk;
 
-            var tags = new List<string>();
-            if (doc.TryGetValue("keywords", out var kwObj))
-            {
-                if (kwObj is JsonElement je && je.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var e in je.EnumerateArray())
-                        if (e.ValueKind == JsonValueKind.String)
-                            tags.Add(e.GetString() ?? string.Empty);
-                }
-            }
+            var tags = SearchDocumentReader.ExtractStringList(doc, "keywords");
 
             var metadata = new Dictionary<string, string>();
             if (!string.IsNullOrWhiteSpace(title))
@@ -340,9 +332,10 @@ public class AzureSearchRepository : ISearchRepository
             AddMeta(metadata, doc, "blobName", "blobName");
             AddMeta(metadata, doc, "containerName", "containerName");
 
-            var authors = ExtractStringArray(doc, "authors");
-            if (authors.Count > 0)
-                metadata["authors"] = string.Join(", ", authors);
+            var authors = SearchDocumentReader.ExtractStringList(doc, "authors");
+            var authorsDisplay = SearchDocumentReader.JoinList(authors);
+            if (!string.IsNullOrEmpty(authorsDisplay))
+                metadata["authors"] = authorsDisplay;
 
             return new SearchableItem
             {
@@ -350,9 +343,11 @@ public class AzureSearchRepository : ISearchRepository
                 Title = title,
                 Description = description,
                 Content = chunk,
-                Type = GetString(doc, "text_source") ?? GetString(doc, "source") ?? string.Empty,
-                Category = GetString(doc, "source") ?? string.Empty,
-                Url = GetString(doc, "sourceUrl") ?? string.Empty,
+                Type = SearchDocumentReader.GetStringOrJoinedArray(doc, "text_source")
+                       ?? SearchDocumentReader.GetStringOrJoinedArray(doc, "source")
+                       ?? string.Empty,
+                Category = SearchDocumentReader.GetStringOrJoinedArray(doc, "source") ?? string.Empty,
+                Url = SearchDocumentReader.GetStringOrJoinedArray(doc, "sourceUrl") ?? string.Empty,
                 ImageUrl = null,
                 Tags = tags,
                 Authors = authors,
@@ -369,66 +364,9 @@ public class AzureSearchRepository : ISearchRepository
 
     private static void AddMeta(Dictionary<string, string> metadata, SearchDocument doc, string key, string metaKey)
     {
-        var v = GetString(doc, key);
-        if (v != null)
+        var v = SearchDocumentReader.GetStringOrJoinedArray(doc, key);
+        if (!string.IsNullOrWhiteSpace(v))
             metadata[metaKey] = v;
-        else if (doc.TryGetValue(key, out var obj))
-            metadata[metaKey] = obj?.ToString() ?? string.Empty;
-    }
-
-    private static string? GetString(SearchDocument doc, string key)
-    {
-        if (!doc.TryGetValue(key, out var v))
-            return null;
-        if (v is string s)
-            return s;
-        if (v is JsonElement je)
-            return je.GetString();
-        return v?.ToString();
-    }
-
-    private static List<string> ExtractStringArray(SearchDocument doc, string fieldName)
-    {
-        if (!doc.TryGetValue(fieldName, out var obj) || obj == null)
-            return new List<string>();
-
-        if (obj is JsonElement je && je.ValueKind == JsonValueKind.Array)
-        {
-            return je.EnumerateArray()
-                .Where(e => e.ValueKind == JsonValueKind.String)
-                .Select(e => e.GetString() ?? string.Empty)
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Select(s => s.Trim())
-                .ToList();
-        }
-
-        if (obj is IEnumerable<string> stringEnumerable)
-        {
-            return stringEnumerable
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Select(s => s.Trim())
-                .ToList();
-        }
-
-        if (obj is System.Collections.IEnumerable enumerable && obj is not string)
-        {
-            var values = new List<string>();
-            foreach (var item in enumerable)
-            {
-                var value = item switch
-                {
-                    null => null,
-                    string s => s,
-                    JsonElement element when element.ValueKind == JsonValueKind.String => element.GetString(),
-                    _ => item.ToString()
-                };
-                if (!string.IsNullOrWhiteSpace(value))
-                    values.Add(value.Trim());
-            }
-            return values;
-        }
-
-        return new List<string>();
     }
 
     private static bool GetBool(SearchDocument doc, string key, bool defaultValue)

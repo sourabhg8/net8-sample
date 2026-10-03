@@ -69,8 +69,8 @@ public class SearchResultItem
     public string? Year { get; set; }
     /// <summary>Publication date from the search index (Azure field "publishDate", string).</summary>
     public string? PublishDate { get; set; }
-    /// <summary>Authors from the search index (Azure field "authors", collection of strings).</summary>
-    public List<string> Authors { get; set; } = new();
+    /// <summary>Authors from the index (comma-separated when stored as a collection).</summary>
+    public string? Authors { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? ModifiedAt { get; set; }
 }

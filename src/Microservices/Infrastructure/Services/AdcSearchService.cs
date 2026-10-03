@@ -144,7 +144,7 @@ public class AdcSearchService : IAdcSearchService
     }
 
     private static string? JoinList(IReadOnlyList<string> values, string separator = ", ") =>
-        values.Count > 0 ? string.Join(separator, values) : null;
+        Infrastructure.Utilities.SearchDocumentReader.JoinList(values, separator);
 
     private static string? FormatDate(DateTimeOffset? date) =>
         date.HasValue ? date.Value.ToString("yyyy-MM-dd") : null;

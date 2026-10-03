@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Microservices.Configuration;
 using Microservices.Core.Entities;
 using Microservices.Core.Interfaces;
+using Microservices.Infrastructure.Utilities;
 
 namespace Microservices.Infrastructure.Repositories;
 
@@ -235,51 +236,40 @@ public class AdcAzureSearchRepository : IAdcSearchRepository
 
     private static AdcSearchRecord? MapDocument(SearchDocument doc)
     {
-        var id = GetString(doc, "id");
+        var id = SearchDocumentReader.GetString(doc, "id");
         if (string.IsNullOrEmpty(id))
             return null;
 
         return new AdcSearchRecord
         {
             Id = id,
-            Name = GetString(doc, "name") ?? string.Empty,
-            Source = GetString(doc, "source") ?? string.Empty,
-            Aliases = ExtractStringArray(doc, "aliases"),
-            NormalizedAliases = ExtractStringArray(doc, "normalizedAliases"),
-            Antibody = GetString(doc, "antibody"),
-            Targets = ExtractStringArray(doc, "targets"),
-            LinkerSequence = GetString(doc, "linkerSequence"),
-            LinkerType = GetString(doc, "linkerType"),
-            LinkerCode = GetString(doc, "linkerCode"),
-            Payload = GetString(doc, "payload"),
-            PayloadClass = GetString(doc, "payloadClass"),
-            TherapeuticTarget = GetString(doc, "therapeuticTarget"),
+            Name = SearchDocumentReader.GetStringOrJoinedArray(doc, "name") ?? string.Empty,
+            Source = SearchDocumentReader.GetStringOrJoinedArray(doc, "source") ?? string.Empty,
+            Aliases = SearchDocumentReader.ExtractStringList(doc, "aliases"),
+            NormalizedAliases = SearchDocumentReader.ExtractStringList(doc, "normalizedAliases"),
+            Antibody = SearchDocumentReader.GetStringOrJoinedArray(doc, "antibody"),
+            Targets = SearchDocumentReader.ExtractStringList(doc, "targets"),
+            LinkerSequence = SearchDocumentReader.GetStringOrJoinedArray(doc, "linkerSequence"),
+            LinkerType = SearchDocumentReader.GetStringOrJoinedArray(doc, "linkerType"),
+            LinkerCode = SearchDocumentReader.GetStringOrJoinedArray(doc, "linkerCode"),
+            Payload = SearchDocumentReader.GetStringOrJoinedArray(doc, "payload"),
+            PayloadClass = SearchDocumentReader.GetStringOrJoinedArray(doc, "payloadClass"),
+            TherapeuticTarget = SearchDocumentReader.GetStringOrJoinedArray(doc, "therapeuticTarget"),
             Dar = GetDouble(doc, "dar"),
-            Developers = ExtractStringArray(doc, "developers"),
-            ClinicalPhase = GetString(doc, "clinicalPhase"),
-            DrugStatus = GetString(doc, "drugStatus"),
-            ApprovalStatus = GetString(doc, "approvalStatus"),
-            ApprovalCountry = GetString(doc, "approvalCountry"),
+            Developers = SearchDocumentReader.ExtractStringList(doc, "developers"),
+            ClinicalPhase = SearchDocumentReader.GetStringOrJoinedArray(doc, "clinicalPhase"),
+            DrugStatus = SearchDocumentReader.GetStringOrJoinedArray(doc, "drugStatus"),
+            ApprovalStatus = SearchDocumentReader.GetStringOrJoinedArray(doc, "approvalStatus"),
+            ApprovalCountry = SearchDocumentReader.GetStringOrJoinedArray(doc, "approvalCountry"),
             ApprovalDate = GetDateTimeOffset(doc, "approvalDate"),
-            Indications = ExtractStringArray(doc, "indications"),
-            TrialIds = ExtractStringArray(doc, "trialIds"),
-            PublicationReference = GetString(doc, "publicationReference"),
-            SourceUrl = GetString(doc, "sourceUrl"),
-            VerificationTier = GetString(doc, "verificationTier"),
-            ValidationNote = GetString(doc, "validationNote"),
+            Indications = SearchDocumentReader.ExtractStringList(doc, "indications"),
+            TrialIds = SearchDocumentReader.ExtractStringList(doc, "trialIds"),
+            PublicationReference = SearchDocumentReader.GetStringOrJoinedArray(doc, "publicationReference"),
+            SourceUrl = SearchDocumentReader.GetStringOrJoinedArray(doc, "sourceUrl"),
+            VerificationTier = SearchDocumentReader.GetStringOrJoinedArray(doc, "verificationTier"),
+            ValidationNote = SearchDocumentReader.GetStringOrJoinedArray(doc, "validationNote"),
             ValidationDate = GetDateTimeOffset(doc, "validationDate")
         };
-    }
-
-    private static string? GetString(SearchDocument doc, string key)
-    {
-        if (!doc.TryGetValue(key, out var v) || v == null)
-            return null;
-        if (v is string s)
-            return s;
-        if (v is JsonElement je && je.ValueKind == JsonValueKind.String)
-            return je.GetString();
-        return v.ToString();
     }
 
     private static double? GetDouble(SearchDocument doc, string key)
@@ -309,24 +299,4 @@ public class AdcAzureSearchRepository : IAdcSearchRepository
         return DateTimeOffset.TryParse(v.ToString(), out var parsed2) ? parsed2 : null;
     }
 
-    private static List<string> ExtractStringArray(SearchDocument doc, string fieldName)
-    {
-        if (!doc.TryGetValue(fieldName, out var obj) || obj == null)
-            return new List<string>();
-
-        if (obj is JsonElement je && je.ValueKind == JsonValueKind.Array)
-        {
-            return je.EnumerateArray()
-                .Where(e => e.ValueKind == JsonValueKind.String)
-                .Select(e => e.GetString() ?? string.Empty)
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Select(s => s.Trim())
-                .ToList();
-        }
-
-        if (obj is IEnumerable<string> stringEnumerable)
-            return stringEnumerable.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList();
-
-        return new List<string>();
-    }
 }

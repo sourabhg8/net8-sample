@@ -108,9 +108,7 @@ public partial class SearchService : ISearchService
                 SearchScore = item.SearchScore,
                 Year = string.IsNullOrWhiteSpace(year) ? null : year.Trim(),
                 PublishDate = string.IsNullOrWhiteSpace(publishDate) ? null : publishDate.Trim(),
-                Authors = item.Authors.Count > 0
-                    ? item.Authors
-                    : ParseAuthorsFromMetadata(metadata),
+                Authors = FormatAuthorsForResponse(item.Authors, metadata),
                 CreatedAt = item.CreatedAt,
                 ModifiedAt = item.ModifiedAt
             });
@@ -294,15 +292,17 @@ public partial class SearchService : ISearchService
         return dict.Count > 0 ? dict : null;
     }
 
-    private static List<string> ParseAuthorsFromMetadata(Dictionary<string, string> metadata)
+    private static string? FormatAuthorsForResponse(
+        IReadOnlyList<string> indexAuthors,
+        Dictionary<string, string> metadata)
     {
-        if (!metadata.TryGetValue("authors", out var authorsValue) || string.IsNullOrWhiteSpace(authorsValue))
-            return new List<string>();
+        if (indexAuthors.Count > 0)
+            return string.Join(", ", indexAuthors);
 
-        return authorsValue
-            .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToList();
+        if (metadata.TryGetValue("authors", out var authorsValue) && !string.IsNullOrWhiteSpace(authorsValue))
+            return authorsValue.Trim();
+
+        return null;
     }
 
     public string SanitizeQuery(string query)

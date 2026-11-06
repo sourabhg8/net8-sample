@@ -13,6 +13,7 @@ public class AdcSearchService : IAdcSearchService
     private readonly ISearchService _searchService;
     private readonly AdcSearchRelevanceSettings _relevanceSettings;
     private readonly AdcAzureSearchSettings _adcSearchSettings;
+    private readonly AdcSearchFiltersSettings _adcFilterSettings;
     private readonly ILogger<AdcSearchService> _logger;
 
     public AdcSearchService(
@@ -20,12 +21,14 @@ public class AdcSearchService : IAdcSearchService
         ISearchService searchService,
         IOptions<AdcSearchRelevanceSettings> relevanceOptions,
         IOptions<AdcAzureSearchSettings> adcSearchOptions,
+        IOptions<AdcSearchFiltersSettings> adcFilterOptions,
         ILogger<AdcSearchService> logger)
     {
         _repository = repository;
         _searchService = searchService;
         _relevanceSettings = relevanceOptions?.Value ?? new AdcSearchRelevanceSettings();
         _adcSearchSettings = adcSearchOptions?.Value ?? new AdcAzureSearchSettings();
+        _adcFilterSettings = adcFilterOptions?.Value ?? new AdcSearchFiltersSettings();
         _logger = logger;
     }
 
@@ -149,20 +152,40 @@ public class AdcSearchService : IAdcSearchService
     private static string? FormatDate(DateTimeOffset? date) =>
         date.HasValue ? date.Value.ToString("yyyy-MM-dd") : null;
 
-    private static IReadOnlyDictionary<string, IReadOnlyList<string>>? BuildFiltersFromRequest(AdcSearchRequest request)
+    private IReadOnlyDictionary<string, IReadOnlyList<string>>? BuildFiltersFromRequest(AdcSearchRequest request)
     {
         if (request.Filters == null || request.Filters.Count == 0)
             return null;
+
+        var paramKey = string.IsNullOrWhiteSpace(_adcFilterSettings.DrugStatusParamKey)
+            ? "drugStatus"
+            : _adcFilterSettings.DrugStatusParamKey.Trim();
+        var indexField = string.IsNullOrWhiteSpace(_adcFilterSettings.DrugStatusIndexFieldName)
+            ? "drugStatus"
+            : _adcFilterSettings.DrugStatusIndexFieldName.Trim();
 
         var dict = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (var kv in request.Filters)
         {
             if (string.IsNullOrWhiteSpace(kv.Key) || kv.Value == null)
                 continue;
-            var list = kv.Value.Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
-            if (list.Count > 0)
+            var list = kv.Value.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).ToList();
+            if (list.Count == 0)
+                continue;
+
+            if (string.Equals(kv.Key, paramKey, StringComparison.OrdinalIgnoreCase))
+            {
+                list = list.Distinct(StringComparer.Ordinal).ToList();
+                if (list.Count == 0)
+                    continue;
+                dict[indexField] = list;
+            }
+            else
+            {
                 dict[kv.Key] = list;
+            }
         }
+
         return dict.Count > 0 ? dict : null;
     }
 

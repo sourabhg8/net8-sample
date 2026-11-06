@@ -27,6 +27,7 @@ public static class ServiceCollectionExtensions
         services.Configure<AzureSearchSettings>(configuration.GetSection(AzureSearchSettings.SectionName));
         services.Configure<SearchCompletionSettings>(configuration.GetSection(SearchCompletionSettings.SectionName));
         services.Configure<AdcAzureSearchSettings>(configuration.GetSection(AdcAzureSearchSettings.SectionName));
+        services.Configure<AdcSearchFiltersSettings>(configuration.GetSection(AdcSearchFiltersSettings.SectionName));
         services.Configure<AdcSearchRelevanceSettings>(configuration.GetSection(AdcSearchRelevanceSettings.SectionName));
         services.Configure<AppSettings>(configuration.GetSection(AppSettings.SectionName));
         services.Configure<PasswordSettings>(configuration.GetSection(PasswordSettings.SectionName));

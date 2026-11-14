@@ -261,7 +261,7 @@ public class AdcAzureSearchRepository : IAdcSearchRepository
             DrugStatus = SearchDocumentReader.GetStringOrJoinedArray(doc, "drugStatus"),
             ApprovalStatus = SearchDocumentReader.GetStringOrJoinedArray(doc, "approvalStatus"),
             ApprovalCountry = SearchDocumentReader.GetStringOrJoinedArray(doc, "approvalCountry"),
-            ApprovalDate = GetDateTimeOffset(doc, "approvalDate"),
+            ApprovalDate = SearchDocumentReader.GetStringOrJoinedArray(doc, "approvalDate"),
             Indications = SearchDocumentReader.ExtractStringList(doc, "indications"),
             TrialIds = SearchDocumentReader.ExtractStringList(doc, "trialIds"),
             PublicationReference = SearchDocumentReader.GetStringOrJoinedArray(doc, "publicationReference"),

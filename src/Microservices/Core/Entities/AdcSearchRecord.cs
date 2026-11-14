@@ -24,7 +24,7 @@ public class AdcSearchRecord
     public string? DrugStatus { get; set; }
     public string? ApprovalStatus { get; set; }
     public string? ApprovalCountry { get; set; }
-    public DateTimeOffset? ApprovalDate { get; set; }
+    public string? ApprovalDate { get; set; }
     public List<string> Indications { get; set; } = new();
     public List<string> TrialIds { get; set; } = new();
     public string? PublicationReference { get; set; }

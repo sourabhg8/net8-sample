@@ -133,7 +133,7 @@ public class AdcSearchService : IAdcSearchService
                 DrugStatus = r.DrugStatus,
                 ApprovalStatus = r.ApprovalStatus,
                 ApprovalCountry = r.ApprovalCountry,
-                ApprovalDate = FormatDate(r.ApprovalDate),
+                ApprovalDate = string.IsNullOrWhiteSpace(r.ApprovalDate) ? null : r.ApprovalDate.Trim(),
                 Indications = JoinList(r.Indications, "; "),
                 TrialIds = JoinList(r.TrialIds),
                 PublicationReference = r.PublicationReference,
